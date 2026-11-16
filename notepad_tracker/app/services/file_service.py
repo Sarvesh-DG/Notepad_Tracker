@@ -54,13 +54,11 @@ class FileService:
 
 
     def list_directories(self):
-        result = []
-
-        for item in self.current_directory.iterdir():
-            if item.is_dir():
-                result.append(item.name)
-
-        return result
+        return sorted(
+        item.name
+        for item in self.current_directory.iterdir()
+        if item.is_dir() and item.name != ".git"
+    )
 
     
     def create_file(self, filename, content):

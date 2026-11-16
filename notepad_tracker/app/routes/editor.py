@@ -1,29 +1,53 @@
-from flask import Flask,Blueprint,jsonify,request,render_template
+
+from flask import Blueprint, jsonify, request, render_template
 from pathlib import Path
 from app.services.instances import file_service, git_service
 import subprocess
 import tkinter as tk
 from tkinter import filedialog
-editor_bp=Blueprint("editor",__name__)
 
 
-@editor_bp.route("/api/files",methods=["GET"])
+editor_bp = Blueprint("editor", __name__)
+
+
+# --------------------------------------------------
+# LIST FILES
+# --------------------------------------------------
+
+@editor_bp.route("/api/files", methods=["GET"])
 def list_files():
-    result=file_service.list_files()
-    return jsonify([{"file":file} for file in result]),200
+    result = file_service.list_files()
+    return jsonify([{"file": file} for file in result]), 200
 
-@editor_bp.route("/api/files/<filename>",methods=["GET"])
+
+# --------------------------------------------------
+# READ FILE
+# --------------------------------------------------
+
+@editor_bp.route("/api/files/<filename>", methods=["GET"])
 def read_file(filename):
     try:
-        result=file_service.read_file(filename)
-        return jsonify({"filename":filename,"content":result}),200
-    except FileNotFoundError:
-        return jsonify({"error":"File not found"}),404
+        result = file_service.read_file(filename)
 
+        return jsonify({
+            "filename": filename,
+            "content": result
+        }), 200
+
+    except FileNotFoundError:
+        return jsonify({"error": "File not found"}), 404
+
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+# --------------------------------------------------
+# CREATE FILE
+# --------------------------------------------------
 
 @editor_bp.route("/api/files", methods=["POST"])
 def create_file():
-    data = request.get_json()
+    data = request.get_json(silent=True)
 
     if not isinstance(data, dict):
         return jsonify({"error": "Invalid JSON body"}), 400
@@ -37,21 +61,17 @@ def create_file():
     if content is None or not isinstance(content, str):
         return jsonify({"error": "Content must be a string"}), 400
 
-    file_path = (file_service.workspace / filename).resolve()
-
-    if not file_path.is_relative_to(file_service.workspace.resolve()):
-        return jsonify({"error": "Invalid file path"}), 400
-
-    if file_path.exists():
-        return jsonify({"error": "File already exists"}), 409
-
     try:
-    
+        # Resolve relative to the currently selected directory
+        file_path = file_service.resolve_path(filename)
+
+        if file_path.exists():
+            return jsonify({"error": "File already exists"}), 409
+
         file_service.create_file(filename, content)
 
+        # Stage and commit the newly created file
         git_service.stage_file(filename)
-
-   
         git_service.commit_changes(f"Created {filename}")
 
         return jsonify({
@@ -74,58 +94,68 @@ def create_file():
             "details": e.stderr
         }), 500
 
-@editor_bp.route("/api/files/<filename>",methods=["PUT"])
-def update_file(filename):
-    data = request.get_json()
-     
-    if not isinstance(data, dict):
-        return jsonify({"error": "Invalid JSON body"}), 400
-     
-    content = data.get("content")
-    
-    if content is None or not isinstance(content, str):
-        return jsonify({"error": "Content must be a string"}), 400
-    file_path = (file_service.workspace / filename).resolve()
 
-    if not file_path.is_relative_to(file_service.workspace.resolve()):
-        return jsonify({"error": "Invalid file path"}), 400
-    if not file_path.exists() or not file_path.is_file():
-        return jsonify({"error": "File not found"}), 404
+# --------------------------------------------------
+# UPDATE FILE
+# --------------------------------------------------
+
+@editor_bp.route("/api/files/<filename>", methods=["PUT"])
+def update_file(filename):
+    data = request.get_json(silent=True)
+
+    if not isinstance(data, dict) or "content" not in data:
+        return jsonify({"error": "Content is required"}), 400
+
+    if not isinstance(data["content"], str):
+        return jsonify({"error": "Content must be a string"}), 400
+
     try:
-        file_service.update_file(filename,content)
+        # Resolve relative to the currently selected directory
+        file_path = file_service.resolve_path(filename)
+
+        if not file_path.exists() or not file_path.is_file():
+            return jsonify({"error": "File not found"}), 404
+
+        file_service.update_file(filename, data["content"])
+
+        # Stage and commit the updated file
         git_service.stage_file(filename)
         git_service.commit_changes(f"Updated {filename}")
+
         return jsonify({
-            "message": "File updated successfully",
-            "filename": filename
-        }),200
+            "message": "File updated successfully"
+        }), 200
+
     except FileNotFoundError:
-        return jsonify({"error":"File not found"}),404
+        return jsonify({"error": "File not found"}), 404
+
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
     except subprocess.CalledProcessError as e:
         return jsonify({
-        "error": "Git operation failed",
-        "details": e.stderr
-    }), 500
+            "error": "File updated, but Git operation failed",
+            "details": e.stderr
+        }), 500
 
+
+# --------------------------------------------------
+# DELETE FILE
+# --------------------------------------------------
 
 @editor_bp.route("/api/files/<filename>", methods=["DELETE"])
 def delete_file(filename):
-    file_path = (file_service.workspace / filename).resolve()
-
-    if not file_path.is_relative_to(file_service.workspace.resolve()):
-        return jsonify({"error": "Invalid file path"}), 400
-
-    if not file_path.exists() or not file_path.is_file():
-        return jsonify({"error": "File not found"}), 404
-
     try:
-        # 1. Delete the file
+        # Resolve relative to the currently selected directory
+        file_path = file_service.resolve_path(filename)
+
+        if not file_path.exists() or not file_path.is_file():
+            return jsonify({"error": "File not found"}), 404
+
         file_service.delete_file(filename)
 
-
+        # Stage deletion and commit
         git_service.stage_deleted_file(filename)
-
-   
         git_service.commit_changes(f"Deleted {filename}")
 
         return jsonify({
@@ -146,6 +176,9 @@ def delete_file(filename):
         }), 500
 
 
+# --------------------------------------------------
+# SELECT WORKSPACE FOLDER
+# --------------------------------------------------
 
 @editor_bp.route("/api/select-folder", methods=["POST"])
 def select_folder():
@@ -170,9 +203,10 @@ def select_folder():
 
         file_service.set_workspace(selected_path)
 
-        git_initialized = git_service.set_repository(
-            selected_path
-        )
+        git_initialized = git_service.set_repository(selected_path)
+
+        # Synchronize Git with the selected directory
+        git_service.working_directory = file_service.current_directory
 
         return jsonify({
             "message": "Folder selected successfully",
@@ -186,12 +220,18 @@ def select_folder():
         return jsonify({"error": str(e)}), 400
 
 
+# --------------------------------------------------
+# HOME PAGE
+# --------------------------------------------------
 
-@editor_bp.route("/",methods=["GET"])
+@editor_bp.route("/", methods=["GET"])
 def index():
     return render_template("index.html")
 
 
+# --------------------------------------------------
+# LIST DIRECTORIES
+# --------------------------------------------------
 
 @editor_bp.route("/api/directories", methods=["GET"])
 def list_directories():
@@ -211,9 +251,13 @@ def list_directories():
         }), 403
 
 
+# --------------------------------------------------
+# NAVIGATE INTO DIRECTORY
+# --------------------------------------------------
+
 @editor_bp.route("/api/navigate-directory", methods=["POST"])
 def navigate_directory():
-    data = request.get_json()
+    data = request.get_json(silent=True)
 
     if not isinstance(data, dict):
         return jsonify({
@@ -230,7 +274,7 @@ def navigate_directory():
     try:
         result = file_service.navigate_directory(directory)
 
-        # Keep Git working directory synchronized
+        # Synchronize Git with the current directory
         git_service.working_directory = file_service.current_directory
 
         return jsonify({
@@ -254,6 +298,11 @@ def navigate_directory():
         return jsonify({
             "error": "Permission denied"
         }), 403
+
+
+# --------------------------------------------------
+# NAVIGATE TO PARENT DIRECTORY
+# --------------------------------------------------
 
 @editor_bp.route("/api/navigate-parent", methods=["POST"])
 def navigate_parent():
