@@ -1,0 +1,81 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notepad Tracker</title>
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<div class="app-container">
+
+    <aside class="sidebar">
+        <div class="brand">
+            <h2>Notepad Tracker</h2>
+            <p>Write. Save. Track.</p>
+        </div>
+
+        <div class="sidebar-actions">
+            <button id="newFileBtn">+ New File</button>
+            <button id="refreshBtn" class="secondary-btn">Refresh</button>
+        </div>
+
+        <h3>MY FILES</h3>
+        <ul id="fileList" class="file-list"></ul>
+
+        <div class="sidebar-bottom">
+            <button id="gitStatusBtn" class="secondary-btn">
+                Git Status
+            </button>
+            <button id="historyBtn" class="secondary-btn">
+                Commit History
+            </button>
+        </div>
+    </aside>
+
+    <main class="editor-area">
+
+        <header class="topbar">
+            <div>
+                <h3 id="currentFilename">No file selected</h3>
+                <span id="saveStatus">Ready</span>
+            </div>
+
+            <button id="deleteFileBtn" class="delete-btn">
+                Delete File
+            </button>
+        </header>
+
+        <section class="editor-container">
+            <textarea
+                id="editor"
+                placeholder="Select a file or create a new one..."
+                disabled
+                spellcheck="false"></textarea>
+        </section>
+
+        <footer class="statusbar">
+            <span id="wordCount">0 words</span>
+            <span id="characterCount">0 characters</span>
+            <span>Auto Save Enabled</span>
+        </footer>
+
+    </main>
+
+</div>
+
+<div id="modal" class="modal hidden">
+    <div class="modal-content">
+        <h3 id="modalTitle">Information</h3>
+        <pre id="modalBody"></pre>
+        <button id="closeModalBtn">Close</button>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/editor.js') }}"></script>
+
+</body>
+</html>

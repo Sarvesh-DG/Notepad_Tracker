@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Environment variables
+.env
+
+# Workspace's independent Git repository and user notes
+workspace/*
+!workspace/.gitkeep
+workspace/.git/
+
+# Testing
+.pytest_cache/
