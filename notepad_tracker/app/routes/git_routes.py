@@ -1,11 +1,9 @@
 from flask import Flask,Blueprint,jsonify,request
 from pathlib import Path
 import subprocess
-from app.services.git_service import GitService
+from app.services.instances import git_service
 git_bp=Blueprint("git_routes",__name__)
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-WORKSPACE_PATH = PROJECT_ROOT / "workspace"
-git_service = GitService(WORKSPACE_PATH)
+
 
 
 

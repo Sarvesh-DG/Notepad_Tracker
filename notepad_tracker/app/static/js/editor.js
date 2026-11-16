@@ -4,9 +4,12 @@
 // ==========================================
 
 const editor = document.getElementById("editor");
+
 const fileList = document.getElementById("fileList");
+const directoryList = document.getElementById("directoryList");
 
 const currentFilename = document.getElementById("currentFilename");
+const currentDirectory = document.getElementById("currentDirectory");
 const saveStatus = document.getElementById("saveStatus");
 
 const wordCount = document.getElementById("wordCount");
@@ -15,8 +18,13 @@ const characterCount = document.getElementById("characterCount");
 const newFileBtn = document.getElementById("newFileBtn");
 const refreshBtn = document.getElementById("refreshBtn");
 const deleteFileBtn = document.getElementById("deleteFileBtn");
+
+const chooseFolderBtn = document.getElementById("chooseFolderBtn");
+const parentFolderBtn = document.getElementById("parentFolderBtn");
+
 const gitStatusBtn = document.getElementById("gitStatusBtn");
 const historyBtn = document.getElementById("historyBtn");
+const fileHistoryBtn = document.getElementById("fileHistoryBtn");
 
 const modal = document.getElementById("modal");
 const modalTitle = document.getElementById("modalTitle");
@@ -29,10 +37,13 @@ const closeModalBtn = document.getElementById("closeModalBtn");
 // ==========================================
 
 let activeFile = null;
+let activeDirectory = null;
+
 let saveTimer = null;
 
 let isDirty = false;
 let isSaving = false;
+let gitReady = true;
 
 const SAVE_DELAY = 1000;
 
@@ -63,16 +74,37 @@ async function apiRequest(url, options = {}) {
 }
 
 
+function jsonOptions(method, body) {
+
+    return {
+        method: method,
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body)
+    };
+
+}
+
+
 // ==========================================
-// 4. MODAL FUNCTIONS
+// 4. MODAL
 // ==========================================
 
 function showModal(title, content) {
 
     modalTitle.textContent = title;
-    modalBody.textContent = content;
+
+    modalBody.replaceChildren();
+
+    const message = document.createElement("pre");
+
+    message.textContent = content;
+
+    modalBody.appendChild(message);
 
     modal.classList.remove("hidden");
+
 }
 
 
@@ -100,11 +132,25 @@ function updateCounts() {
 
     characterCount.textContent =
         `${content.length} characters`;
+
 }
 
 
 // ==========================================
-// 6. LOAD FILES
+// 6. UPDATE DIRECTORY DISPLAY
+// ==========================================
+
+function updateDirectoryDisplay(directory) {
+
+    activeDirectory = directory;
+
+    currentDirectory.textContent = directory;
+
+}
+
+
+// ==========================================
+// 7. LOAD FILES
 // ==========================================
 
 async function loadFiles() {
@@ -113,7 +159,19 @@ async function loadFiles() {
 
         const data = await apiRequest("/api/files");
 
-        fileList.innerHTML = "";
+        fileList.replaceChildren();
+
+        if (data.length === 0) {
+
+            const empty = document.createElement("li");
+
+            empty.textContent = "No files found";
+
+            fileList.appendChild(empty);
+
+            return;
+
+        }
 
         data.forEach(item => {
 
@@ -135,14 +193,76 @@ async function loadFiles() {
 
     } catch (error) {
 
-        showModal("Error", error.message);
+        showModal("File Loading Error", error.message);
 
     }
+
 }
 
 
 // ==========================================
-// 7. SAVE FILE
+// 8. LOAD DIRECTORIES
+// ==========================================
+
+async function loadDirectories() {
+
+    try {
+
+        const data = await apiRequest("/api/directories");
+
+        directoryList.replaceChildren();
+
+        if (data.length === 0) {
+
+            const empty = document.createElement("li");
+
+            empty.textContent = "No folders found";
+
+            directoryList.appendChild(empty);
+
+            return;
+
+        }
+
+        data.forEach(folder => {
+
+            const li = document.createElement("li");
+
+            li.textContent = `📁 ${folder}`;
+
+            li.addEventListener("click", () => {
+                navigateDirectory(folder);
+            });
+
+            directoryList.appendChild(li);
+
+        });
+
+    } catch (error) {
+
+        showModal("Directory Loading Error", error.message);
+
+    }
+
+}
+
+
+// ==========================================
+// 9. REFRESH FILES AND DIRECTORIES
+// ==========================================
+
+async function refreshWorkspace() {
+
+    await Promise.all([
+        loadFiles(),
+        loadDirectories()
+    ]);
+
+}
+
+
+// ==========================================
+// 10. SAVE FILE
 // ==========================================
 
 function saveFile() {
@@ -153,6 +273,12 @@ function saveFile() {
         return Promise.resolve();
     }
 
+    if (!gitReady) {
+        return Promise.reject(
+            new Error("Initialize Git in this folder before editing.")
+        );
+    }
+
     const filename = activeFile;
     const content = editor.value;
 
@@ -160,7 +286,7 @@ function saveFile() {
 
     saveStatus.textContent = "Saving...";
 
-    const task = saveQueue.then(async () => {
+    const task = saveQueue.catch(() => {}).then(async () => {
 
         isSaving = true;
 
@@ -168,17 +294,9 @@ function saveFile() {
 
             await apiRequest(
                 `/api/files/${encodeURIComponent(filename)}`,
-                {
-                    method: "PUT",
-
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
-
-                    body: JSON.stringify({
-                        content: content
-                    })
-                }
+                jsonOptions("PUT", {
+                    content: content
+                })
             );
 
             if (activeFile === filename) {
@@ -190,6 +308,7 @@ function saveFile() {
                 } else {
 
                     isDirty = true;
+
                     scheduleSave();
 
                 }
@@ -204,12 +323,7 @@ function saveFile() {
 
     });
 
-    // Keep the queue usable even if one save fails.
-    saveQueue = task.catch(error => {
-
-        console.error("Save error:", error);
-
-    });
+    saveQueue = task;
 
     return task.catch(error => {
 
@@ -229,7 +343,7 @@ function saveFile() {
 
 
 // ==========================================
-// 8. AUTOMATIC SAVE
+// 11. AUTOMATIC SAVE
 // ==========================================
 
 function scheduleSave() {
@@ -246,8 +360,8 @@ function scheduleSave() {
 
     saveTimer = setTimeout(() => {
 
-        saveFile().catch(() => {
-            // Error is reflected in the save status.
+        saveFile().catch(error => {
+            console.error("Automatic save failed:", error);
         });
 
     }, SAVE_DELAY);
@@ -256,7 +370,7 @@ function scheduleSave() {
 
 
 // ==========================================
-// 9. FLUSH PENDING SAVES
+// 12. FLUSH PENDING SAVES
 // ==========================================
 
 async function flushSave() {
@@ -275,7 +389,7 @@ async function flushSave() {
 
 
 // ==========================================
-// 10. OPEN FILE
+// 13. OPEN FILE
 // ==========================================
 
 async function openFile(filename) {
@@ -306,7 +420,7 @@ async function openFile(filename) {
 
     } catch (error) {
 
-        showModal("Unable to open file", error.message);
+        showModal("Unable to Open File", error.message);
 
     }
 
@@ -314,10 +428,21 @@ async function openFile(filename) {
 
 
 // ==========================================
-// 11. CREATE NEW FILE
+// 14. CREATE FILE
 // ==========================================
 
 async function createFile() {
+
+    if (!gitReady) {
+
+        showModal(
+            "Git Not Initialized",
+            "Initialize Git in the selected directory before creating files."
+        );
+
+        return;
+
+    }
 
     const filename = prompt("Enter file name:");
 
@@ -331,31 +456,21 @@ async function createFile() {
 
         const cleanFilename = filename.trim();
 
-        await apiRequest("/api/files", {
-
-            method: "POST",
-
-            headers: {
-                "Content-Type": "application/json"
-            },
-
-            body: JSON.stringify({
-
+        await apiRequest(
+            "/api/files",
+            jsonOptions("POST", {
                 filename: cleanFilename,
-
                 content: ""
-
             })
+        );
 
-        });
-
-        await loadFiles();
+        await refreshWorkspace();
 
         await openFile(cleanFilename);
 
     } catch (error) {
 
-        showModal("Unable to create file", error.message);
+        showModal("Unable to Create File", error.message);
 
     }
 
@@ -363,7 +478,7 @@ async function createFile() {
 
 
 // ==========================================
-// 12. DELETE FILE
+// 15. DELETE FILE
 // ==========================================
 
 async function deleteFile() {
@@ -407,11 +522,11 @@ async function deleteFile() {
 
         updateCounts();
 
-        await loadFiles();
+        await refreshWorkspace();
 
     } catch (error) {
 
-        showModal("Delete failed", error.message);
+        showModal("Delete Failed", error.message);
 
     }
 
@@ -419,7 +534,170 @@ async function deleteFile() {
 
 
 // ==========================================
-// 13. GIT STATUS
+// 16. SELECT A DIFFERENT FOLDER
+// ==========================================
+
+async function chooseFolder() {
+
+    try {
+
+        await flushSave();
+
+        const data = await apiRequest("/api/select-folder", {
+            method: "POST"
+        });
+
+        if (!data.directory) {
+            return;
+        }
+
+        gitReady = Boolean(data.git_initialized);
+
+        if (!gitReady) {
+
+            const initialize = confirm(
+                "This folder is not a Git repository.\n\n" +
+                "Would you like to initialize Git here?"
+            );
+
+            if (initialize) {
+
+                await apiRequest("/api/git/init", {
+                    method: "POST"
+                });
+
+                gitReady = true;
+
+            } else {
+
+                showModal(
+                    "Git Not Initialized",
+                    "The folder has been selected, but editing and file creation require Git initialization."
+                );
+
+            }
+
+        }
+
+        activeFile = null;
+
+        editor.value = "";
+
+        editor.disabled = true;
+
+        currentFilename.textContent = "No file selected";
+
+        saveStatus.textContent = gitReady
+            ? "Folder selected"
+            : "Git initialization required";
+
+        isDirty = false;
+
+        updateDirectoryDisplay(data.directory);
+
+        updateCounts();
+
+        await refreshWorkspace();
+
+    } catch (error) {
+
+        showModal("Folder Selection Error", error.message);
+
+    }
+
+}
+
+
+// ==========================================
+// 17. NAVIGATE INTO A FOLDER
+// ==========================================
+
+async function navigateDirectory(folder) {
+
+    try {
+
+        await flushSave();
+
+        const data = await apiRequest(
+            "/api/navigate-directory",
+            jsonOptions("POST", {
+                directory: folder
+            })
+        );
+
+        activeFile = null;
+
+        editor.value = "";
+
+        editor.disabled = true;
+
+        currentFilename.textContent = "No file selected";
+
+        saveStatus.textContent = "Folder opened";
+
+        isDirty = false;
+
+        updateDirectoryDisplay(data.directory);
+
+        updateCounts();
+
+        await refreshWorkspace();
+
+    } catch (error) {
+
+        showModal("Navigation Error", error.message);
+
+    }
+
+}
+
+
+// ==========================================
+// 18. NAVIGATE TO PARENT DIRECTORY
+// ==========================================
+
+async function navigateParent() {
+
+    try {
+
+        await flushSave();
+
+        const data = await apiRequest(
+            "/api/navigate-parent",
+            {
+                method: "POST"
+            }
+        );
+
+        activeFile = null;
+
+        editor.value = "";
+
+        editor.disabled = true;
+
+        currentFilename.textContent = "No file selected";
+
+        saveStatus.textContent = "Parent folder opened";
+
+        isDirty = false;
+
+        updateDirectoryDisplay(data.directory);
+
+        updateCounts();
+
+        await refreshWorkspace();
+
+    } catch (error) {
+
+        showModal("Navigation Error", error.message);
+
+    }
+
+}
+
+
+// ==========================================
+// 19. GIT STATUS
 // ==========================================
 
 async function getGitStatus() {
@@ -440,7 +718,7 @@ async function getGitStatus() {
 
 
 // ==========================================
-// 14. COMPLETE GIT HISTORY
+// 20. REPOSITORY HISTORY
 // ==========================================
 
 async function getGitHistory() {
@@ -449,7 +727,7 @@ async function getGitHistory() {
 
         const data = await apiRequest("/api/git/history");
 
-        showModal("Git Commit History", data.output);
+        showModal("Repository History", data.output);
 
     } catch (error) {
 
@@ -461,7 +739,7 @@ async function getGitHistory() {
 
 
 // ==========================================
-// 15. FILE-SPECIFIC HISTORY
+// 21. FILE HISTORY
 // ==========================================
 
 async function getFileHistory() {
@@ -495,8 +773,7 @@ async function getFileHistory() {
 
         if (commits.length === 0) {
 
-            modalBody.textContent =
-                "No commit history found for this file.";
+            modalBody.textContent = "No commit history found.";
 
         } else {
 
@@ -509,7 +786,6 @@ async function getFileHistory() {
                 }
 
                 const commitId = match[1];
-
                 const message = match[2];
 
                 const entry = document.createElement("div");
@@ -518,19 +794,16 @@ async function getFileHistory() {
 
                 const details = document.createElement("p");
 
-                details.textContent =
-                    `${commitId} - ${message}`;
+                details.textContent = `${commitId} - ${message}`;
 
                 const restoreBtn = document.createElement("button");
 
                 restoreBtn.textContent = "Restore this version";
 
-                restoreBtn.className = "secondary-btn";
+                restoreBtn.disabled = !gitReady;
 
                 restoreBtn.addEventListener("click", () => {
-
                     restoreFile(commitId);
-
                 });
 
                 entry.appendChild(details);
@@ -555,23 +828,20 @@ async function getFileHistory() {
 
 
 // ==========================================
-// 16. RESTORE PREVIOUS VERSION
+// 22. RESTORE PREVIOUS VERSION
 // ==========================================
 
 async function restoreFile(commitId) {
 
-    if (!activeFile) {
+    if (!activeFile || !gitReady) {
         return;
     }
 
     const filename = activeFile;
 
     const confirmed = confirm(
-
         `Restore ${filename} to commit ${commitId}?\n\n` +
-
-        "Your current version will be replaced."
-
+        "Your current contents will be replaced."
     );
 
     if (!confirmed) {
@@ -584,45 +854,24 @@ async function restoreFile(commitId) {
 
         await apiRequest(
             `/api/git/restore/${encodeURIComponent(filename)}`,
-            {
-
-                method: "POST",
-
-                headers: {
-                    "Content-Type": "application/json"
-                },
-
-                body: JSON.stringify({
-                    commit_id: commitId
-                })
-
-            }
+            jsonOptions("POST", {
+                commit_id: commitId
+            })
         );
-
-        // Retrieve restored contents.
 
         const data = await apiRequest(
             `/api/files/${encodeURIComponent(filename)}`
         );
 
-        activeFile = filename;
-
         editor.value = data.content;
-
-        editor.disabled = false;
-
-        currentFilename.textContent = filename;
 
         isDirty = false;
 
-        saveStatus.textContent =
-            "Version restored and committed";
+        saveStatus.textContent = "Version restored and committed";
 
         updateCounts();
 
-        await loadFiles();
-
-        // Display refreshed history.
+        await refreshWorkspace();
 
         await getFileHistory();
 
@@ -636,7 +885,7 @@ async function restoreFile(commitId) {
 
 
 // ==========================================
-// 17. MANUAL SAVE - CTRL + S
+// 23. CTRL + S
 // ==========================================
 
 document.addEventListener("keydown", async event => {
@@ -668,7 +917,7 @@ document.addEventListener("keydown", async event => {
 
 
 // ==========================================
-// 18. UNSAVED CHANGE PROTECTION
+// 24. UNSAVED CHANGE PROTECTION
 // ==========================================
 
 window.addEventListener("beforeunload", event => {
@@ -685,7 +934,7 @@ window.addEventListener("beforeunload", event => {
 
 
 // ==========================================
-// 19. EDITOR EVENTS
+// 25. EDITOR INPUT
 // ==========================================
 
 editor.addEventListener("input", () => {
@@ -698,34 +947,18 @@ editor.addEventListener("input", () => {
 
 
 // ==========================================
-// 20. FILE HISTORY BUTTON
-// ==========================================
-
-// Create the button dynamically.
-
-const fileHistoryBtn = document.createElement("button");
-
-fileHistoryBtn.id = "fileHistoryBtn";
-
-fileHistoryBtn.textContent = "File History";
-
-fileHistoryBtn.className = deleteFileBtn.className;
-
-deleteFileBtn.insertAdjacentElement(
-    "afterend",
-    fileHistoryBtn
-);
-
-
-// ==========================================
-// 21. BUTTON EVENTS
+// 26. BUTTON EVENTS
 // ==========================================
 
 newFileBtn.addEventListener("click", createFile);
 
-refreshBtn.addEventListener("click", loadFiles);
+refreshBtn.addEventListener("click", refreshWorkspace);
 
 deleteFileBtn.addEventListener("click", deleteFile);
+
+chooseFolderBtn.addEventListener("click", chooseFolder);
+
+parentFolderBtn.addEventListener("click", navigateParent);
 
 gitStatusBtn.addEventListener("click", getGitStatus);
 
@@ -735,11 +968,12 @@ fileHistoryBtn.addEventListener("click", getFileHistory);
 
 
 // ==========================================
-// 22. INITIAL APPLICATION LOAD
+// 27. INITIAL APPLICATION LOAD
 // ==========================================
 
 editor.disabled = true;
 
-loadFiles();
-
 updateCounts();
+
+refreshWorkspace();
+

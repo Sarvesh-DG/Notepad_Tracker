@@ -1,81 +1,198 @@
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>Notepad Tracker</title>
-    <link rel="stylesheet"
-          href="{{ url_for('static', filename='css/style.css') }}">
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/style.css') }}"
+    >
 </head>
+
 <body>
 
-<div class="app-container">
+    <div class="app-container">
 
-    <aside class="sidebar">
-        <div class="brand">
-            <h2>Notepad Tracker</h2>
-            <p>Write. Save. Track.</p>
-        </div>
+        <!-- SIDEBAR -->
+        <aside class="sidebar">
 
-        <div class="sidebar-actions">
-            <button id="newFileBtn">+ New File</button>
-            <button id="refreshBtn" class="secondary-btn">Refresh</button>
-        </div>
-
-        <h3>MY FILES</h3>
-        <ul id="fileList" class="file-list"></ul>
-
-        <div class="sidebar-bottom">
-            <button id="gitStatusBtn" class="secondary-btn">
-                Git Status
-            </button>
-            <button id="historyBtn" class="secondary-btn">
-                Commit History
-            </button>
-        </div>
-    </aside>
-
-    <main class="editor-area">
-
-        <header class="topbar">
-            <div>
-                <h3 id="currentFilename">No file selected</h3>
-                <span id="saveStatus">Ready</span>
+            <div class="brand">
+                <h2>Notepad Tracker</h2>
+                <p>Smart file editor with Git</p>
             </div>
 
-            <button id="deleteFileBtn" class="delete-btn">
-                Delete File
-            </button>
-        </header>
+            <!-- Folder Selection -->
+            <div class="folder-section">
 
-        <section class="editor-container">
-            <textarea
-                id="editor"
-                placeholder="Select a file or create a new one..."
-                disabled
-                spellcheck="false"></textarea>
-        </section>
+                <button id="chooseFolderBtn" class="secondary-btn">
+                    Choose Folder
+                </button>
 
-        <footer class="statusbar">
-            <span id="wordCount">0 words</span>
-            <span id="characterCount">0 characters</span>
-            <span>Auto Save Enabled</span>
-        </footer>
+                <p id="currentDirectory" class="directory-path">
+                    workspace
+                </p>
 
-    </main>
+                <button id="parentFolderBtn" class="secondary-btn">
+                    ← Back to Parent
+                </button>
 
-</div>
+            </div>
 
-<div id="modal" class="modal hidden">
-    <div class="modal-content">
-        <h3 id="modalTitle">Information</h3>
-        <pre id="modalBody"></pre>
-        <button id="closeModalBtn">Close</button>
+            <hr>
+
+            <!-- File Actions -->
+            <div class="sidebar-actions">
+
+                <button id="newFileBtn">
+                    + New File
+                </button>
+
+                <button id="refreshBtn">
+                    Refresh
+                </button>
+
+                <button id="deleteFileBtn">
+                    Delete File
+                </button>
+
+            </div>
+
+            <hr>
+
+            <!-- Git Actions -->
+            <div class="git-actions sidebar-bottom">
+
+                <button id="gitStatusBtn">
+                    Git Status
+                </button>
+
+                <button id="historyBtn">
+                    Repository History
+                </button>
+
+                <button id="fileHistoryBtn">
+                    File History
+                </button>
+
+            </div>
+
+            <hr>
+
+            <!-- Directory List -->
+            <div class="directory-section">
+
+                <h3>Folders</h3>
+
+                <ul id="directoryList" class="directory-list">
+                    <li>No folders</li>
+                </ul>
+
+            </div>
+
+            <hr>
+
+            <!-- File List -->
+            <div class="files-section">
+
+                <h3>Files</h3>
+
+                <ul id="fileList" class="file-list">
+                    <li>No files</li>
+                </ul>
+
+            </div>
+
+        </aside>
+
+
+        <!-- MAIN EDITOR -->
+        <main class="editor-area">
+
+            <!-- TOP BAR -->
+            <header class="topbar">
+
+                <div>
+                    <h3 id="currentFilename">
+                        No file selected
+                    </h3>
+
+                    <p id="saveStatus">
+                        Ready
+                    </p>
+                </div>
+
+            </header>
+
+
+            <!-- EDITOR -->
+            <section class="editor-container">
+
+                <textarea
+                    id="editor"
+                    placeholder="Select a file or create a new one..."
+                    spellcheck="false"
+                    disabled
+                ></textarea>
+
+            </section>
+
+
+            <!-- STATUS BAR -->
+            <footer class="statusbar">
+
+                <span id="wordCount">
+                    0 words
+                </span>
+
+                <span id="characterCount">
+                    0 characters
+                </span>
+
+                <span>
+                    Ctrl + S to save
+                </span>
+
+            </footer>
+
+        </main>
+
     </div>
-</div>
 
-<script src="{{ url_for('static', filename='js/editor.js') }}"></script>
+
+    <!-- MODAL -->
+    <div id="modal" class="modal hidden">
+
+        <div class="modal-content">
+
+            <div class="modal-header">
+
+                <h3 id="modalTitle">
+                    Notification
+                </h3>
+
+                <button id="closeModalBtn">
+                    ×
+                </button>
+
+            </div>
+
+            <div id="modalBody" class="modal-body"></div>
+
+        </div>
+
+    </div>
+
+
+    <!-- JAVASCRIPT -->
+    <script
+        src="{{ url_for('static', filename='js/editor.js') }}"
+    ></script>
 
 </body>
+
 </html>

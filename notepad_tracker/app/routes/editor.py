@@ -1,13 +1,11 @@
 from flask import Flask,Blueprint,jsonify,request,render_template
 from pathlib import Path
-from app.services.file_service import FileService
-from app.services.git_service import GitService
+from app.services.instances import file_service, git_service
 import subprocess
+import tkinter as tk
+from tkinter import filedialog
 editor_bp=Blueprint("editor",__name__)
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-WORKSPACE_PATH = PROJECT_ROOT / "workspace"
-file_service = FileService(WORKSPACE_PATH)
-git_service = GitService(WORKSPACE_PATH)
+
 
 @editor_bp.route("/api/files",methods=["GET"])
 def list_files():
@@ -147,6 +145,132 @@ def delete_file(filename):
             "details": e.stderr
         }), 500
 
+
+
+@editor_bp.route("/api/select-folder", methods=["POST"])
+def select_folder():
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+
+    try:
+        selected_folder = filedialog.askdirectory(
+            title="Select a folder for Notepad Tracker"
+        )
+    finally:
+        root.destroy()
+
+    if not selected_folder:
+        return jsonify({
+            "message": "Folder selection cancelled"
+        }), 200
+
+    try:
+        selected_path = Path(selected_folder).resolve()
+
+        file_service.set_workspace(selected_path)
+
+        git_initialized = git_service.set_repository(
+            selected_path
+        )
+
+        return jsonify({
+            "message": "Folder selected successfully",
+            "directory": str(selected_path),
+            "git_initialized": git_initialized,
+            "files": file_service.list_files(),
+            "directories": file_service.list_directories()
+        }), 200
+
+    except (FileNotFoundError, ValueError) as e:
+        return jsonify({"error": str(e)}), 400
+
+
+
 @editor_bp.route("/",methods=["GET"])
 def index():
     return render_template("index.html")
+
+
+
+@editor_bp.route("/api/directories", methods=["GET"])
+def list_directories():
+    try:
+        result = file_service.list_directories()
+
+        return jsonify(result), 200
+
+    except FileNotFoundError:
+        return jsonify({
+            "error": "Directory not found"
+        }), 404
+
+    except PermissionError:
+        return jsonify({
+            "error": "Permission denied"
+        }), 403
+
+
+@editor_bp.route("/api/navigate-directory", methods=["POST"])
+def navigate_directory():
+    data = request.get_json()
+
+    if not isinstance(data, dict):
+        return jsonify({
+            "error": "Invalid JSON body"
+        }), 400
+
+    directory = data.get("directory")
+
+    if not isinstance(directory, str) or not directory.strip():
+        return jsonify({
+            "error": "Directory name is required"
+        }), 400
+
+    try:
+        result = file_service.navigate_directory(directory)
+
+        # Keep Git working directory synchronized
+        git_service.working_directory = file_service.current_directory
+
+        return jsonify({
+            "message": "Directory opened successfully",
+            "directory": result,
+            "files": file_service.list_files(),
+            "directories": file_service.list_directories()
+        }), 200
+
+    except FileNotFoundError:
+        return jsonify({
+            "error": "Directory not found"
+        }), 404
+
+    except ValueError as e:
+        return jsonify({
+            "error": str(e)
+        }), 400
+
+    except PermissionError:
+        return jsonify({
+            "error": "Permission denied"
+        }), 403
+
+@editor_bp.route("/api/navigate-parent", methods=["POST"])
+def navigate_parent():
+    try:
+        result = file_service.navigate_parent()
+
+        # Synchronize Git with the current directory
+        git_service.working_directory = file_service.current_directory
+
+        return jsonify({
+            "message": "Parent directory opened",
+            "directory": result,
+            "files": file_service.list_files(),
+            "directories": file_service.list_directories()
+        }), 200
+
+    except PermissionError:
+        return jsonify({
+            "error": "Permission denied"
+        }), 403
